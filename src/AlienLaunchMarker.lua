@@ -25,6 +25,9 @@ function AlienLaunchMarker:init(world)
     -- whether we launched the alien and should stop rendering the preview
     self.launched = false
 
+	-- whether we've collided with something
+	self.collided = false
+
     -- our alien we will eventually spawn
     self.alien = nil
 end

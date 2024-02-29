@@ -4,12 +4,10 @@
 
     Author: Colton Ogden
     cogden@cs50.harvard.edu
-]]
-
-Level = Class{}
+]] Level = Class {}
 
 function Level:init()
-    
+
     -- create a new "world" (where physics take place), with no x gravity
     -- and 30 units of Y gravity (for downward force)
     self.world = love.physics.newWorld(0, 300)
@@ -31,7 +29,7 @@ function Level:init()
             -- grab the body that belongs to the player
             local playerFixture = a:getUserData() == 'Player' and a or b
             local obstacleFixture = a:getUserData() == 'Obstacle' and a or b
-            
+
             -- destroy the obstacle if player's combined X/Y velocity is high enough
             local velX, velY = playerFixture:getBody():getLinearVelocity()
             local sumVel = math.abs(velX) + math.abs(velY)
@@ -84,7 +82,7 @@ function Level:init()
     -- implementing any functionality with them in this demo; use-case specific
     -- http://www.iforce2d.net/b2dtut/collision-anatomy
     function endContact(a, b, coll)
-        
+
     end
 
     function preSolve(a, b, coll)
@@ -103,6 +101,7 @@ function Level:init()
 
     -- aliens in our scene
     self.aliens = {}
+	self.playerAliens = {}
 
     -- obstacles guarding aliens that we can destroy
     self.obstacles = {}
@@ -111,15 +110,14 @@ function Level:init()
     self.edgeShape = love.physics.newEdgeShape(0, 0, VIRTUAL_WIDTH * 3, 0)
 
     -- spawn an alien to try and destroy
-    table.insert(self.aliens, Alien(self.world, 'square', VIRTUAL_WIDTH - 80, VIRTUAL_HEIGHT - TILE_SIZE - ALIEN_SIZE / 2, 'Alien'))
+    table.insert(self.aliens,
+        Alien(self.world, 'square', VIRTUAL_WIDTH - 80, VIRTUAL_HEIGHT - TILE_SIZE - ALIEN_SIZE / 2, 'Alien'))
 
     -- spawn a few obstacles
-    table.insert(self.obstacles, Obstacle(self.world, 'vertical',
-        VIRTUAL_WIDTH - 120, VIRTUAL_HEIGHT - 35 - 110 / 2))
-    table.insert(self.obstacles, Obstacle(self.world, 'vertical',
-        VIRTUAL_WIDTH - 35, VIRTUAL_HEIGHT - 35 - 110 / 2))
-    table.insert(self.obstacles, Obstacle(self.world, 'horizontal',
-        VIRTUAL_WIDTH - 80, VIRTUAL_HEIGHT - 35 - 110 - 35 / 2))
+    table.insert(self.obstacles, Obstacle(self.world, 'vertical', VIRTUAL_WIDTH - 120, VIRTUAL_HEIGHT - 35 - 110 / 2))
+    table.insert(self.obstacles, Obstacle(self.world, 'vertical', VIRTUAL_WIDTH - 35, VIRTUAL_HEIGHT - 35 - 110 / 2))
+    table.insert(self.obstacles,
+        Obstacle(self.world, 'horizontal', VIRTUAL_WIDTH - 80, VIRTUAL_HEIGHT - 35 - 110 - 35 / 2))
 
     -- ground data
     self.groundBody = love.physics.newBody(self.world, -VIRTUAL_WIDTH, VIRTUAL_HEIGHT - 35, 'static')
@@ -132,7 +130,7 @@ function Level:init()
 end
 
 function Level:update(dt)
-    
+
     -- update launch marker, which shows trajectory
     self.launchMarker:update(dt)
 
@@ -141,7 +139,7 @@ function Level:update(dt)
 
     -- destroy all bodies we calculated to destroy during the update call
     for k, body in pairs(self.destroyedBodies) do
-        if not body:isDestroyed() then 
+        if not body:isDestroyed() then
             body:destroy()
         end
     end
@@ -170,26 +168,94 @@ function Level:update(dt)
         end
     end
 
-    -- replace launch marker if original alien stopped moving
+    -- replace launch marker if all player aliens and obstacles stopped moving
     if self.launchMarker.launched then
         local xPos, yPos = self.launchMarker.alien.body:getPosition()
         local xVel, yVel = self.launchMarker.alien.body:getLinearVelocity()
-        
-        -- if we fired our alien to the left or it's almost done rolling, respawn
-        if xPos < 0 or (math.abs(xVel) + math.abs(yVel) < 1.5) then
-            self.launchMarker.alien.body:destroy()
-            self.launchMarker = AlienLaunchMarker(self.world)
 
-            -- re-initialize level if we have no more aliens
-            if #self.aliens == 0 then
-                gStateMachine:change('start')
+        local stoppedVel = 5
+
+        -- if all player aliens have stopped moving or are off screen and all obstacles have stopped moving or are off screen then reset
+        local aliensStopped = false
+
+        aliensStopped = not (xPos > 0 and xPos < VIRTUAL_WIDTH and (math.abs(xVel) + math.abs(yVel) > stoppedVel))
+
+        for k, alien in pairs(self.playerAliens) do
+            if alien.type == 'round' then
+                local x, y = alien.body:getPosition()
+                local xV, yV = alien.body:getLinearVelocity()
+                if x > 0 and x < VIRTUAL_WIDTH and y > 0 and y < VIRTUAL_HEIGHT and
+                    (math.abs(xV) + math.abs(yV) > stoppedVel) then
+                    aliensStopped = false
+                end
             end
         end
+
+        local obstaclesStopped = true
+
+        for k, obstacle in pairs(self.obstacles) do
+            local x, y = obstacle.body:getPosition()
+            local xV, yV = obstacle.body:getLinearVelocity()
+            if x > 0 and x < VIRTUAL_WIDTH and y > 0 and y < VIRTUAL_HEIGHT and
+                (math.abs(xV) + math.abs(yV) > stoppedVel) then
+                obstaclesStopped = false
+            end
+        end
+
+        if aliensStopped and obstaclesStopped then
+            self.launchMarker.alien.body:destroy()
+			self.playerAliens = {}
+
+            self.launchMarker = AlienLaunchMarker(self.world)
+
+        end
+
     end
+
+    -- re-initialize level if we have no more aliens
+    if #self.aliens == 0 and not self.launchMarker.launched then
+        gStateMachine:change('start')
+    end
+
+    -- if we've launched and not collided yet, when space is pressed spawn two additional aliens
+    if self.launchMarker.launched and not self.launchMarker.collided then
+        if love.keyboard.wasPressed('space') then
+            local xPos, yPos = self.launchMarker.alien.body:getPosition()
+            local xVel, yVel = self.launchMarker.alien.body:getLinearVelocity()
+
+            -- create two aliens with positions perpendicular to the trajectory of the original alien
+            local trajectory = math.atan2(yVel, xVel)
+            local xPos1 = xPos + math.cos(trajectory + math.pi / 2) * 35
+            local yPos1 = yPos + math.sin(trajectory + math.pi / 2) * 35
+
+            local alien1 = Alien(self.world, 'round', xPos1, yPos1, 'Player')
+
+            local xPos2 = xPos - math.cos(trajectory + math.pi / 2) * 35
+            local yPos2 = yPos - math.sin(trajectory + math.pi / 2) * 35
+
+            local alien2 = Alien(self.world, 'round', xPos2, yPos2, 'Player')
+
+            local trajectoryChange = 100
+
+            -- set velocities so trajectory angle is adjusted up and down
+            local xVel1 = xVel + math.cos(trajectory + math.pi / 2) * trajectoryChange
+            local yVel1 = yVel + math.sin(trajectory + math.pi / 2) * trajectoryChange
+            local xVel2 = xVel - math.cos(trajectory + math.pi / 2) * trajectoryChange
+            local yVel2 = yVel - math.sin(trajectory + math.pi / 2) * trajectoryChange
+
+            alien1.body:setLinearVelocity(xVel1, yVel1)
+            alien2.body:setLinearVelocity(xVel2, yVel2)
+
+            table.insert(self.playerAliens, alien1)
+            table.insert(self.playerAliens, alien2)
+        end
+    end
+
+    self.background:update(dt)
 end
 
 function Level:render()
-    
+
     -- render ground tiles across full scrollable width of the screen
     for x = -VIRTUAL_WIDTH, VIRTUAL_WIDTH * 2, 35 do
         love.graphics.draw(gTextures['tiles'], gFrames['tiles'][12], x, VIRTUAL_HEIGHT - 35)
@@ -201,6 +267,10 @@ function Level:render()
         alien:render()
     end
 
+	for k, alien in pairs(self.playerAliens) do
+		alien:render()
+	end
+
     for k, obstacle in pairs(self.obstacles) do
         obstacle:render()
     end
@@ -209,8 +279,7 @@ function Level:render()
     if not self.launchMarker.launched then
         love.graphics.setFont(gFonts['medium'])
         love.graphics.setColor(0, 0, 0, 1)
-        love.graphics.printf('Click and drag circular alien to shoot!',
-            0, 64, VIRTUAL_WIDTH, 'center')
+        love.graphics.printf('Click and drag circular alien to shoot!', 0, 64, VIRTUAL_WIDTH, 'center')
         love.graphics.setColor(1, 1, 1, 1)
     end
 

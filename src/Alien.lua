@@ -4,16 +4,13 @@
 
     Author: Colton Ogden
     cogden@cs50.harvard.edu
-]]
-
-Alien = Class{}
+]] Alien = Class {}
 
 function Alien:init(world, type, x, y, userData)
     self.world = world
     self.type = type or 'square'
 
-    self.body = love.physics.newBody(self.world, 
-        x or math.random(VIRTUAL_WIDTH), y or math.random(VIRTUAL_HEIGHT - 35),
+    self.body = love.physics.newBody(self.world, x or math.random(VIRTUAL_WIDTH), y or math.random(VIRTUAL_HEIGHT - 35),
         'dynamic')
 
     -- different shape and sprite based on type passed in
@@ -27,6 +24,11 @@ function Alien:init(world, type, x, y, userData)
 
     self.fixture = love.physics.newFixture(self.body, self.shape)
 
+    if self.type == 'round' then
+        self.fixture:setRestitution(0.4)
+        self.body:setAngularDamping(1)
+    end
+
     self.fixture:setUserData(userData)
 
     -- used to keep track of despawning the Alien and flinging it
@@ -34,7 +36,6 @@ function Alien:init(world, type, x, y, userData)
 end
 
 function Alien:render()
-    love.graphics.draw(gTextures['aliens'], gFrames['aliens'][self.sprite],
-        math.floor(self.body:getX()), math.floor(self.body:getY()), self.body:getAngle(),
-        1, 1, 17.5, 17.5)
+    love.graphics.draw(gTextures['aliens'], gFrames['aliens'][self.sprite], math.floor(self.body:getX()),
+        math.floor(self.body:getY()), self.body:getAngle(), 1, 1, 17.5, 17.5)
 end
